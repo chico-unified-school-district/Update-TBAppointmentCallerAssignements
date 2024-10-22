@@ -19,6 +19,7 @@ param (
  [System.Management.Automation.PSCredential]$SqlCredential,
  [string]$AppointmentsTable,
  [string]$AssignmentsTable,
+ [string]$RunUntil,
  [Alias('wi')]
 	[switch]$WhatIf
 )
@@ -44,7 +45,7 @@ function Get-AssignedCallers ($params, $baseSql, $table, $date) {
 # ============================== Main ==================================
 Clear-Host
 . .\lib\Show-TestRun.ps1
-. .\lib\Load-Module.ps1
+
 Show-TestRun
 Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd'
 
@@ -62,37 +63,46 @@ $firstUnnasignedAppointmentBaseSql = Get-Content .\sql\firstUnnasignedAppointmen
 $unnasignedAppointmentsBaseSql = Get-Content .\sql\unnassignedAppointments.sql -Raw
 $updateAppointmentBaseSql = Get-Content .\sql\updateAppointmentAssignment.sql -Raw
 $selectTestingDatesBaseSql = Get-Content .\sql\selectTestingDates.sql -Raw
+$delaySeconds = 300
+Write-Host ('Runnning Until {0}' -f (Get-Date $RunUntil)) -F Blue
 
-$testingDates = Get-TestingDates $dbParams $selectTestingDatesBaseSql $AppointmentsTable
-foreach ($tbDate in $testingDates.date) {
- Write-Verbose ('Tb Date: ' + $tbDate)
+do {
+ $testingDates = Get-TestingDates $dbParams $selectTestingDatesBaseSql $AppointmentsTable
+ foreach ($tbDate in $testingDates.date) {
+  Write-Verbose ('Tb Date: ' + $tbDate)
 
- # Get all possible callers for this tb date
- $assignedCallers = Get-AssignedCallers $dbParams $assignedCallerSql $AssignmentsTable $tbDate
+  # Get all possible callers for this tb date
+  $assignedCallers = Get-AssignedCallers $dbParams $assignedCallerSql $AssignmentsTable $tbDate
 
- # Clear Appointments
- $clearAssignmentsSql = $clearAssignmentsBaseSql -f $AppointmentsTable, $tbDate
- Write-Verbose $clearAssignmentsSql
- if (!$WhatIf) { Invoke-Sqlcmd @dbParams -Query $clearAssignmentsSql }
+  # Clear Appointments
+  $clearAssignmentsSql = $clearAssignmentsBaseSql -f $AppointmentsTable, $tbDate
+  Write-Verbose $clearAssignmentsSql
+  if (!$WhatIf) { Invoke-Sqlcmd @dbParams -Query $clearAssignmentsSql }
 
- $unnasignedAppointmentsSql = $unnasignedAppointmentsBaseSql -f $AppointmentsTable, $tbDate
- $unnasignedAppointments = Invoke-Sqlcmd @dbParams -Query $unnasignedAppointmentsSql
+  $unnasignedAppointmentsSql = $unnasignedAppointmentsBaseSql -f $AppointmentsTable, $tbDate
+  $unnasignedAppointments = Invoke-Sqlcmd @dbParams -Query $unnasignedAppointmentsSql
 
- # Loop through each unnasigned appointment until none are left unnassigned.
- foreach ($appointment in $unnasignedAppointments) {
-  foreach ($nurse in $assignedCallers) {
-   # SELECT first unnassigned appointment
-   $firstUnnasignedSql = $firstUnnasignedAppointmentBaseSql -f $AppointmentsTable, $tbDate
-   $unassignedAppointment = Invoke-Sqlcmd @dbParams -Query $firstUnnasignedSql
+  # Loop through each unnasigned appointment until none are left unnassigned.
+  foreach ($appointment in $unnasignedAppointments) {
+   foreach ($nurse in $assignedCallers) {
+    # SELECT first unnassigned appointment
+    $firstUnnasignedSql = $firstUnnasignedAppointmentBaseSql -f $AppointmentsTable, $tbDate
+    $unassignedAppointment = Invoke-Sqlcmd @dbParams -Query $firstUnnasignedSql
 
-   if ($null -eq $unassignedAppointment) { break }
+    if ($null -eq $unassignedAppointment) { break }
 
-   $udpateAssignmentSql = $updateAppointmentBaseSql -f $AppointmentsTable , $nurse.caller, $unassignedAppointment.id
-   Write-Host ( '{0},tbDate: {1}' -f $udpateAssignmentSql, $tbDate) -F Magenta
-   if (!$WhatIf -and ($unassignedAppointment.id)) { Invoke-Sqlcmd @dbParams -Query $udpateAssignmentSql }
+    $udpateAssignmentSql = $updateAppointmentBaseSql -f $AppointmentsTable , $nurse.caller, $unassignedAppointment.id
+    Write-Verbose ( '{0},tbDate: {1}' -f $udpateAssignmentSql, $tbDate)
+    if (!$WhatIf -and ($unassignedAppointment.id)) { Invoke-Sqlcmd @dbParams -Query $udpateAssignmentSql }
+   }
   }
  }
-}
+ if (!$WhatIf) {
+
+  Write-Host ('Next Run @ {0}' -f ((Get-Date).AddSeconds($delaySeconds))) -F Green
+  Start-Sleep $delaySeconds
+ }
+} Until (((Get-Date) -gt (Get-Date $RunUntil)) -or $WhatIf)
 # ============================
 
 Show-TestRun
