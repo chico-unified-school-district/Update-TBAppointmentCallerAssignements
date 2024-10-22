@@ -12,39 +12,87 @@
 param (
  # Laserfiche DB Server
  [Parameter(Mandatory = $true)]
- # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$SqlServer,
  [Parameter(Mandatory = $true)]
- [Alias('LFDB')]
  [string]$SqlDatabase,
  [Parameter(Mandatory = $true)]
- [Alias('LFCred')]
  [System.Management.Automation.PSCredential]$SqlCredential,
+ [string]$AppointmentsTable,
+ [string]$AssignmentsTable,
  [Alias('wi')]
 	[switch]$WhatIf
 )
 
-function Invoke-LFSql ($sql) {
+# Functions
+
+function Get-TestingDates ($params, $baseSql, $table) {
  process {
-  if ($WhatIf) { Write-Verbose ('{0}, sql: {1}' -f $MyInvocation.MyCommand.name, $sql) }
-  else { Invoke-SqlCmd @lfFormsDBParams -Query $sql }
+  $sql = $baseSql -f $table
+  Write-Verbose ("{0},`n{1}" -f $MyInvocation.MyCommand.Name, $sql)
+  Invoke-SqlCmd @params -Query $sql
  }
 }
 
-# ======================================================================
+function Get-AssignedCallers ($params, $baseSql, $table, $date) {
+ process {
+  $sql = $baseSql -f $table, $date
+  Write-Verbose ('{0},Assigned Callers for {1}' -f $MyInvocation.MyCommand.Name, $date)
+  Invoke-SqlCmd @params -Query $sql
+ }
+}
 
+# ============================== Main ==================================
+Clear-Host
 . .\lib\Show-TestRun.ps1
 . .\lib\Load-Module.ps1
-'SqlServer' | Load-Module
-
 Show-TestRun
+Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd'
 
-$DBParams = @{
+$dbParams = @{
  Server                 = $SqlServer
  Database               = $SqlDatabase
  Credential             = $SqlCredential
  TrustServerCertificate = $true
 }
 
+# ============================
+$assignedCallerSql = Get-Content .\sql\assignedCallers.sql -Raw
+$clearAssignmentsBaseSql = Get-Content .\sql\clearAssignments.sql -Raw
+$firstUnnasignedAppointmentBaseSql = Get-Content .\sql\firstUnnasignedAppointment.sql -Raw
+$unnasignedAppointmentsBaseSql = Get-Content .\sql\unnassignedAppointments.sql -Raw
+$updateAppointmentBaseSql = Get-Content .\sql\updateAppointmentAssignment.sql -Raw
+$selectTestingDatesBaseSql = Get-Content .\sql\selectTestingDates.sql -Raw
+
+$testingDates = Get-TestingDates $dbParams $selectTestingDatesBaseSql $AppointmentsTable
+foreach ($tbDate in $testingDates.date) {
+ Write-Verbose ('Tb Date: ' + $tbDate)
+
+ # Get all possible callers for this tb date
+ $assignedCallers = Get-AssignedCallers $dbParams $assignedCallerSql $AssignmentsTable $tbDate
+
+ # Clear Appointments
+ $clearAssignmentsSql = $clearAssignmentsBaseSql -f $AppointmentsTable, $tbDate
+ Write-Verbose $clearAssignmentsSql
+ if (!$WhatIf) { Invoke-Sqlcmd @dbParams -Query $clearAssignmentsSql }
+
+ $unnasignedAppointmentsSql = $unnasignedAppointmentsBaseSql -f $AppointmentsTable, $tbDate
+ $unnasignedAppointments = Invoke-Sqlcmd @dbParams -Query $unnasignedAppointmentsSql
+
+ # Loop through each unnasigned appointment until none are left unnassigned.
+ foreach ($appointment in $unnasignedAppointments) {
+  foreach ($nurse in $assignedCallers) {
+   # SELECT first unnassigned appointment
+   $firstUnnasignedSql = $firstUnnasignedAppointmentBaseSql -f $AppointmentsTable, $tbDate
+   $unassignedAppointment = Invoke-Sqlcmd @dbParams -Query $firstUnnasignedSql
+
+   if ($null -eq $unassignedAppointment) { break }
+
+   $udpateAssignmentSql = $updateAppointmentBaseSql -f $AppointmentsTable , $nurse.caller, $unassignedAppointment.id
+   Write-Host ( '{0},tbDate: {1}' -f $udpateAssignmentSql, $tbDate) -F Magenta
+   if (!$WhatIf -and ($unassignedAppointment.id)) { Invoke-Sqlcmd @dbParams -Query $udpateAssignmentSql }
+  }
+ }
+}
+# ============================
 
 Show-TestRun
