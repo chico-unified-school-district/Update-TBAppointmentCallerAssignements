@@ -47,7 +47,7 @@ Clear-Host
 . .\lib\Show-TestRun.ps1
 
 Show-TestRun
-Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd'
+Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd' -Verbose:$false
 
 $dbParams = @{
  Server                 = $SqlServer
