@@ -26,28 +26,165 @@ param (
 
 # Functions
 
-function Get-TestingDates ($params, $baseSql, $table) {
- process {
-  $sql = $baseSql -f $table
-  Write-Verbose ("{0},`n{1}" -f $MyInvocation.MyCommand.Name, $sql)
-  Invoke-SqlCmd @params -Query $sql
- }
-}
-
-function Get-AssignedCallers ($params, $baseSql, $table, $date) {
- process {
-  $sql = $baseSql -f $table, $date
-  Write-Verbose ('{0},Assigned Callers for {1}' -f $MyInvocation.MyCommand.Name, $date)
-  Invoke-SqlCmd @params -Query $sql
- }
-}
-
 # ============================== Main ==================================
 Clear-Host
 . .\lib\Show-TestRun.ps1
 
 Show-TestRun
+
 Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd' -Verbose:$false
+
+function Clear-Callers ($dBparams, $baseSql, $table) {
+ process {
+  if (($_.clearCallers -eq $false) -or ($null -eq $_.clearCallers)) { return $_ }
+  # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.testDate)
+  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, ($_.testDate -split ' ')[0]) -F DarkCyan
+  $sql = $baseSql -f $table, $_.testDate
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $sql)
+  # Write-Verbose ($sql | Out-String)
+  if (!$WhatIf) { Invoke-Sqlcmd @dBparams -Query $sql }
+  $_
+ }
+}
+
+function Compare-CallersForClear {
+ begin {
+ }
+ process {
+  if ($null -eq $_.appointmentCallers) { return $_ }
+  Write-Verbose ("`n", "Assigned:", $_.assignedCallers, "`n", "Appointments:", $_.appointmentCallers | Out-String)
+  # $changes = Compare-Object -ReferenceObject $_.assignedCallers -DifferenceObject $_.appointmentCallers
+  # If a caller assigned to an appointment is not in the assigned list for that date
+  # then clear all assignemnts for that appointment date.
+  $_.clearCallers = foreach ($caller in $_.appointmentCallers) {
+   if ($_.assignedCallers -notcontains $caller) { $true } else { $false }
+  }
+  # $_.clearCallers = if ($changes) { $true } # Only clear callers if there has been a change
+  $_
+ }
+}
+
+function Get-AllAppointmentsForDate ($dBparams, $baseSql, $table) {
+ begin {
+ }
+ process {
+  # Write-Host ('{0}' -f $MyInvocation.MyCommand.Name)
+  $sql = $baseSql -f $table, $_.testDate
+  # Get row id and assigned caller
+  $_.appointmentsList = Invoke-SqlCmd @dBparams -Query $sql
+  # | ConvertTo-Csv | ConvertFrom-Csv
+  if (!$_.appointmentsList) { return }
+  $_
+ }
+}
+
+function Get-AssignedCallers ($dBparams, $baseSql, $table) {
+ process {
+  $sql = $baseSql -f $table, $_.testDate
+  $_.assignedCallers = (Invoke-SqlCmd @dBparams -Query $sql).caller | Sort-Object
+  Write-Verbose ('{0},{1},[{2}]' -f $MyInvocation.MyCommand.Name, $_.testDate, ($_.assignedCallers -join ','))
+  if (!$_.assignedCallers) { return }
+  $_
+ }
+}
+
+function Get-AppointmentCallers {
+ begin {
+ }
+ process {
+  $_.appointmentCallers = ($_.appointmentsList | Select-Object -Property caller -Unique).caller |
+  ForEach-Object { if ($_ -match '\w') { $_ } } | Sort-Object # Ensure both arrays are sorted equally
+  $_
+ }
+}
+
+function Get-TestingDates ($dBparams, $baseSql, $table) {
+ process {
+  $sql = $baseSql -f $table
+  Write-Verbose ("{0},`n{1}" -f $MyInvocation.MyCommand.Name, $sql)
+  Invoke-SqlCmd @dBparams -Query $sql
+ }
+}
+
+function New-CallsObject {
+ begin {
+ }
+ process {
+  $obj = '' | Select-Object -Property testDate, assignedCallers, appointmentCallers, appointmentsList, clearCallers
+  $obj.testDate = $_.date
+  $obj
+ }
+}
+
+function Set-AllCallAssignments ($dBparams, $assignedBaseSql, $unassignedBaseSql, $updateBaseSql, $table) {
+ begin {
+  function Get-LowestCaller ($appointments) {
+   process {
+    Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
+    Write-Verbose ($appointments.caller | Group-Object | Select-Object name, count | Sort-Object count | out-string)
+    $appointments.caller | Group-Object | Select-Object name, count | Sort-Object count | Select-Object -First 1
+   }
+  }
+
+  function Update-CallerAssignment ($dbParams, $baseSql, $table, $caller, $id) {
+   process {
+    $sql = $baseSql -f $table, $caller, $id
+    Write-Host ('{0},{2}' -f $MyInvocation.MyCommand.Name, ($_.testDate -split ' ')[0], $sql) -f Blue
+    if (!$WhatIf -and $id) {
+     Write-Debug 'Proceed?'
+     Invoke-SqlCmd @dBparams -Query $sql
+    }
+   }
+  }
+
+ }
+ process {
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.testDate)
+  $assignedSql = $assignedBaseSql -f $table, $_.testDate
+
+  $unassignedSql = $unassignedBaseSql -f $table, $_.testDate
+  $unassignedCalls = Invoke-SqlCmd @dBparams -Query $unassignedSql
+  Write-Verbose ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $unassignedCalls.Count)
+  if ($null -eq $unassignedCalls) {
+   # no more unnassigned calls
+   return Write-Verbose ('{0},{1},All calls assigned.' -f $MyInvocation.MyCommand.Name, $_.testDate)
+  }
+  $i = 0
+  do {
+   $i++
+   $unassignedCalls = Invoke-SqlCmd @dBparams -Query $unassignedSql
+   if ($null -eq $unassignedCalls) {
+    # no more unnassigned calls
+    return Write-Verbose ('{0},{1},All calls assigned.' -f $MyInvocation.MyCommand.Name, $_.testDate)
+   }
+
+   $assignedCalls = Invoke-SqlCmd @dBparams -Query $assignedSql
+   $lowestCaller = (Get-LowestCaller $assignedCalls).name
+   if ($lowestCaller) { Write-Verbose ('{0},Lowest Caller: {1}' -f $MyInvocation.MyCommand.Name, $lowestCaller) }
+
+   # if no pre-existing callers then assign each caller a call
+   if (!$lowestCaller) {
+    # Set initial callers for test date
+    foreach ($caller in $_.assignedCallers) {
+     $unassignedCalls = Invoke-SqlCmd @dBparams -Query $unassignedSql
+     if (!$unassignedCalls) { continue }
+     $id = ($unassignedCalls | Select-Object id -First 1).id
+     Write-Host ('{0},{1},{2},{3},Lowest caller loop' -f $MyInvocation.MyCommand.Name, $caller, $_.testDate, $id) -f Magenta
+     Update-CallerAssignment $dBparams $updateBaseSql $table $caller $id
+    }
+   }
+   else {
+    $unassignedCallId = ($unassignedCalls | Select-Object -Property id -First 1).id
+    $msgVars = $MyInvocation.MyCommand.Name, $lowestCaller, $_.testDate, $unassignedCallId
+    Write-Host ("{0},{1},{2},{3},Not 'Lowest Loop'" -f $msgVars) -f Magenta
+    Update-CallerAssignment $dBparams $updateBaseSql $table $lowestCaller $unassignedCallId
+   }
+  } until ( $null -eq (Invoke-SqlCmd @dBparams -Query $unassignedSql) -or
+  (($i -eq $_.assignedCallers.count) -and $WhatIf ) # exit do/until when testing
+  )
+  # $_
+ }
+}
 
 $dbParams = @{
  Server                 = $SqlServer
@@ -56,53 +193,27 @@ $dbParams = @{
  TrustServerCertificate = $true
 }
 
-# ============================
-$assignedCallerSql = Get-Content .\sql\assignedCallers.sql -Raw
+$assignedCallerBaseSql = Get-Content .\sql\assignedCallers.sql -Raw
 $clearAssignmentsBaseSql = Get-Content .\sql\clearAssignments.sql -Raw
-$firstUnnasignedAppointmentBaseSql = Get-Content .\sql\firstUnnasignedAppointment.sql -Raw
+# $firstUnnasignedAppointmentBaseSql = Get-Content .\sql\firstUnnasignedAppointment.sql -Raw
 $unnasignedAppointmentsBaseSql = Get-Content .\sql\unnassignedAppointments.sql -Raw
 $updateAppointmentBaseSql = Get-Content .\sql\updateAppointmentAssignment.sql -Raw
 $selectTestingDatesBaseSql = Get-Content .\sql\selectTestingDates.sql -Raw
-$delaySeconds = 300
-Write-Host ('Runnning Until {0}' -f (Get-Date $RunUntil)) -F Blue
+$allAppointmentsBaseSql = Get-Content .\sql\allAppointmentsForDate.sql -Raw
+$allAssignmentsForDateBaseSql = Get-Content .\sql\allAssignedAppointmentsForDate.sql -Raw
 
+$RunUntil = '2:30pm'
+Write-Host "Runs until $RunUntil"
 do {
- $testingDates = Get-TestingDates $dbParams $selectTestingDatesBaseSql $AppointmentsTable
- foreach ($tbDate in $testingDates.date) {
-  Write-Verbose ('Tb Date: ' + $tbDate)
-
-  # Get all possible callers for this tb date
-  $assignedCallers = Get-AssignedCallers $dbParams $assignedCallerSql $AssignmentsTable $tbDate
-
-  # Clear Appointments
-  $clearAssignmentsSql = $clearAssignmentsBaseSql -f $AppointmentsTable, $tbDate
-  Write-Verbose $clearAssignmentsSql
-  if (!$WhatIf) { Invoke-Sqlcmd @dbParams -Query $clearAssignmentsSql }
-
-  $unnasignedAppointmentsSql = $unnasignedAppointmentsBaseSql -f $AppointmentsTable, $tbDate
-  $unnasignedAppointments = Invoke-Sqlcmd @dbParams -Query $unnasignedAppointmentsSql
-
-  # Loop through each unnasigned appointment until none are left unnassigned.
-  foreach ($appointment in $unnasignedAppointments) {
-   foreach ($nurse in $assignedCallers) {
-    # SELECT first unnassigned appointment
-    $firstUnnasignedSql = $firstUnnasignedAppointmentBaseSql -f $AppointmentsTable, $tbDate
-    $unassignedAppointment = Invoke-Sqlcmd @dbParams -Query $firstUnnasignedSql
-
-    if ($null -eq $unassignedAppointment) { break }
-
-    $udpateAssignmentSql = $updateAppointmentBaseSql -f $AppointmentsTable , $nurse.caller, $unassignedAppointment.id
-    Write-Verbose ( '{0},tbDate: {1}' -f $udpateAssignmentSql, $tbDate)
-    if (!$WhatIf -and ($unassignedAppointment.id)) { Invoke-Sqlcmd @dbParams -Query $udpateAssignmentSql }
-   }
-  }
- }
- if (!$WhatIf) {
-
-  Write-Host ('Next Run @ {0}' -f ((Get-Date).AddSeconds($delaySeconds))) -F Green
-  Start-Sleep $delaySeconds
- }
-} Until (((Get-Date) -gt (Get-Date $RunUntil)) -or $WhatIf)
-# ============================
+ Get-TestingDates $dbParams $selectTestingDatesBaseSql $AppointmentsTable |
+ New-CallsObject |
+ Get-AssignedCallers $dbParams $assignedCallerBaseSql $AssignmentsTable |
+ Get-AllAppointmentsForDate $dbParams $allAppointmentsBaseSql $AppointmentsTable |
+ Get-AppointmentCallers |
+ Compare-CallersForClear |
+ Clear-Callers $dbParams $clearAssignmentsBaseSql $AppointmentsTable |
+ Set-AllCallAssignments $dbParams $allAssignmentsForDateBaseSql $unnasignedAppointmentsBaseSql $updateAppointmentBaseSql $AppointmentsTable
+ if (!$WhatIf) { Start-Sleep 300 }
+} until ($WhatIf -or ((Get-Date) -ge (Get-Date $RunUntil)))
 
 Show-TestRun
