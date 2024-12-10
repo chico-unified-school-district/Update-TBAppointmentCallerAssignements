@@ -53,13 +53,13 @@ function Compare-CallersForClear {
  process {
   if ($null -eq $_.appointmentCallers) { return $_ }
   Write-Verbose ("`n", "Assigned:", $_.assignedCallers, "`n", "Appointments:", $_.appointmentCallers | Out-String)
-  # $changes = Compare-Object -ReferenceObject $_.assignedCallers -DifferenceObject $_.appointmentCallers
   # If a caller assigned to an appointment is not in the assigned list for that date
   # then clear all assignemnts for that appointment date.
   $_.clearCallers = foreach ($caller in $_.appointmentCallers) {
    if ($_.assignedCallers -notcontains $caller) { $true } else { $false }
   }
-  # $_.clearCallers = if ($changes) { $true } # Only clear callers if there has been a change
+  $changes = Compare-Object -ReferenceObject $_.assignedCallers -DifferenceObject $_.appointmentCallers
+  $_.clearCallers = if ($changes) { $true } # Only clear callers if there has been a change
   $_
  }
 }
@@ -213,7 +213,10 @@ do {
  Compare-CallersForClear |
  Clear-Callers $dbParams $clearAssignmentsBaseSql $AppointmentsTable |
  Set-AllCallAssignments $dbParams $allAssignmentsForDateBaseSql $unnasignedAppointmentsBaseSql $updateAppointmentBaseSql $AppointmentsTable
- if (!$WhatIf) { Start-Sleep 300 }
+ if (!$WhatIf) {
+  Write-Host ('Next Run at {0}' -f ((Get-Date).AddSeconds(300)))
+  Start-Sleep 300
+ }
 } until ($WhatIf -or ((Get-Date) -ge (Get-Date $RunUntil)))
 
 Show-TestRun
