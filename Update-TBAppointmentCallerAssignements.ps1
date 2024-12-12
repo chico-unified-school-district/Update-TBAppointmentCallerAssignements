@@ -36,7 +36,7 @@ Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd' -Verbose:$false
 
 function Clear-Callers ($dBparams, $baseSql, $table) {
  process {
-  if (($_.clearCallers -eq $false) -or ($null -eq $_.clearCallers)) { return $_ }
+  if (!$_.clearCallers) { return $_ }
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.testDate)
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, ($_.testDate -split ' ')[0]) -F DarkCyan
   $sql = $baseSql -f $table, $_.testDate
@@ -48,18 +48,14 @@ function Clear-Callers ($dBparams, $baseSql, $table) {
 }
 
 function Compare-CallersForClear {
- begin {
- }
  process {
   if ($null -eq $_.appointmentCallers) { return $_ }
   Write-Verbose ("`n", "Assigned:", $_.assignedCallers, "`n", "Appointments:", $_.appointmentCallers | Out-String)
-  # If a caller assigned to an appointment is not in the assigned list for that date
-  # then clear all assignemnts for that appointment date.
-  $_.clearCallers = foreach ($caller in $_.appointmentCallers) {
-   if ($_.assignedCallers -notcontains $caller) { $true } else { $false }
-  }
   $changes = Compare-Object -ReferenceObject $_.assignedCallers -DifferenceObject $_.appointmentCallers
-  $_.clearCallers = if ($changes) { $true } # Only clear callers if there has been a change
+  $_.clearCallers = if ($changes.SideIndicator -contains '=>') {
+   Write-Verbose ($changes | Out-String)
+   $true # Only clear callers if an appointment has a non assigned caller '=>'
+  }
   $_
  }
 }
