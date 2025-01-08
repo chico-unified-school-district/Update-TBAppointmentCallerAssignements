@@ -36,6 +36,7 @@ Import-Module -Name 'SqlServer' -Cmdlet 'Invoke-SqlCmd' -Verbose:$false
 
 function Clear-Callers ($dBparams, $baseSql, $table) {
  process {
+  Write-Verbose ($_ | out-string)
   if (!$_.clearCallers) { return $_ }
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.testDate)
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, ($_.testDate -split ' ')[0]) -F DarkCyan
@@ -49,13 +50,11 @@ function Clear-Callers ($dBparams, $baseSql, $table) {
 
 function Compare-CallersForClear {
  process {
+  Write-Verbose ($_ | out-string)
   if ($null -eq $_.appointmentCallers) { return $_ }
   Write-Verbose ("`n", "Assigned:", $_.assignedCallers, "`n", "Appointments:", $_.appointmentCallers | Out-String)
   $changes = Compare-Object -ReferenceObject $_.assignedCallers -DifferenceObject $_.appointmentCallers
-  $_.clearCallers = if ($changes.SideIndicator -contains '=>') {
-   Write-Verbose ($changes | Out-String)
-   $true # Only clear callers if an appointment has a non assigned caller '=>'
-  }
+  $_.clearCallers = if ($changes) { $true } else { $false }
   $_
  }
 }
