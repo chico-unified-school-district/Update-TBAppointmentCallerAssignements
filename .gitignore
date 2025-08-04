@@ -1,29 +1,5 @@
-*desktop.ini
-*.csv
-*.log
-*.pw
-*.zip
-*.log
-*.pw
-* =====Sub Directories=====
-*oauth2.txt
-.\lib\gam-64\oauth2.txt
-Archive
-#VS Code Files
-*.vscode
-
-# Windows image file caches
-Thumbs.db
-ehthumbs.db
-
-# Folder config file
-*.Desktop.ini
-
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
-
-notes.ps1
-/notes.ps1
-/site_ref.csv
+*.desktop.ini
 /jenkins.ps1
 /params.ps1
+/Update-TBAppointmentCallerAssignements.ps1-old.ps1
+/.vscode
