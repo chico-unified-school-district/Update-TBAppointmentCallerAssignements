@@ -1,1 +1,1 @@
-UPDATE {0} SET nurseName = NULL WHERE date = '{1}'
+UPDATE {0} SET nurseName = NULL WHERE date = @date

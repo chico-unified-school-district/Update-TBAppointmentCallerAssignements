@@ -1,5 +1,3 @@
-DECLARE
- @date date = '{1}'
 SELECT DISTINCT date,caller1 as caller
 FROM {0}
 WHERE
