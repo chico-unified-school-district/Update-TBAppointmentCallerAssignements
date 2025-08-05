@@ -24,10 +24,7 @@ param (
 	[switch]$WhatIf
 )
 
-function Clear-Callers ($dBparams, $baseSql, $table) {
- begin {
-  $sql = $baseSql -f $table
- }
+function Clear-Callers ($dBparams, $sql) {
  process {
   Write-Verbose ($_ | out-string)
   if (!$_.clearCallers) { return $_ }
@@ -52,25 +49,18 @@ function Compare-CallersForClear {
  }
 }
 
-function Get-AllAppointmentsForDate ($dBparams, $baseSql, $table) {
- begin {
-  $sql = $baseSql -f $table
- }
+function Get-AllAppointmentsForDate ($dBparams, $sql) {
  process {
   # Write-Host ('{0}' -f $MyInvocation.MyCommand.Name)
   $sqlVars = "date=$($_.testDate)"
   # Get row id and assigned caller
-  $_.appointmentsList = New-SqlOperation @dBparams -Query $sql -Parameters $sqlVars
-  # | ConvertTo-Csv | ConvertFrom-Csv
+  $_.appointmentsList = New-SqlOperation @dBparams -Query $sql -Parameters $sqlVars | ConvertTo-Csv | ConvertFrom-Csv
   if (!$_.appointmentsList) { return }
   $_
  }
 }
 
-function Get-AssignedCallers ($dBparams, $baseSql, $table) {
- begin {
-  $sql = $baseSql -f $table
- }
+function Get-AssignedCallers ($dBparams, $sql) {
  process {
   $sqlVars = "date=$($_.testDate)"
   $_.assignedCallers = (New-SqlOperation @dBparams -Query $sql -Parameters $sqlVars).caller | Sort-Object
@@ -88,9 +78,8 @@ function Get-AppointmentCallers {
  }
 }
 
-function Get-TestingDates ($dBparams, $baseSql, $table) {
+function Get-TestingDates ($dBparams, $sql) {
  process {
-  $sql = $baseSql -f $table
   Write-Verbose ("{0},`n{1}" -f $MyInvocation.MyCommand.Name, $sql)
   New-SqlOperation @dBparams -Query $sql
  }
@@ -106,7 +95,7 @@ function New-CallsObject {
  }
 }
 
-function Set-AllCallAssignments ($dBparams, $assignedBaseSql, $unassignedBaseSql, $updateBaseSql, $table) {
+function Set-AllCallAssignments ($dBparams, $assignedSql, $unassignedSql, $updateBaseSql) {
  begin {
   function getLowestCaller ($appointments) {
    process {
@@ -116,10 +105,7 @@ function Set-AllCallAssignments ($dBparams, $assignedBaseSql, $unassignedBaseSql
    }
   }
 
-  function updateCallerAssignment ($dbParams, $baseSql, $table, $caller, $id) {
-   begin {
-    $sql = $baseSql -f $table
-   }
+  function updateCallerAssignment ($dbParams, $sql, $caller, $id) {
    process {
     $sqlVars = "nurse=$caller", "id=$id"
     Write-Host ('{0},{1},[{2}],[{3}]' -f $MyInvocation.MyCommand.Name, ($_.testDate -split ' ')[0], $sql, ($sqlVars -join ',')) -f Blue
@@ -133,9 +119,6 @@ function Set-AllCallAssignments ($dBparams, $assignedBaseSql, $unassignedBaseSql
  }
  process {
   Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.testDate)
-  $assignedSql = $assignedBaseSql -f $table
-
-  $unassignedSql = $unassignedBaseSql -f $table
   $unassignedCalls = New-SqlOperation @dBparams -Query $unassignedSql -Parameters "date=$($_.testDate)"
   Write-Verbose ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, $unassignedCalls.Count)
   if ($null -eq $unassignedCalls) {
@@ -163,14 +146,14 @@ function Set-AllCallAssignments ($dBparams, $assignedBaseSql, $unassignedBaseSql
      if (!$unassignedCalls) { continue }
      $id = ($unassignedCalls | Select-Object id -First 1).id
      Write-Host ('{0},{1},{2},{3},Lowest caller loop' -f $MyInvocation.MyCommand.Name, $caller, $_.testDate, $id) -f Magenta
-     updateCallerAssignment $dBparams $updateBaseSql $table $caller $id
+     updateCallerAssignment $dBparams $updateBaseSql $caller $id
     }
    }
    else {
     $unassignedCallId = ($unassignedCalls | Select-Object -Property id -First 1).id
     $msgVars = $MyInvocation.MyCommand.Name, $lowestCaller, $_.testDate, $unassignedCallId
     Write-Host ("{0},{1},{2},{3},Not 'Lowest Loop'" -f $msgVars) -f Magenta
-    updateCallerAssignment $dBparams $updateBaseSql $table $lowestCaller $unassignedCallId
+    updateCallerAssignment $dBparams $updateBaseSql $lowestCaller $unassignedCallId
    }
   } until ( $null -eq (New-SqlOperation @dBparams -Query $unassignedSql -Parameters "date=$($_.testDate)") -or
    (($i -eq $_.assignedCallers.count) -and $WhatIf ) # exit do/until when testing
@@ -192,25 +175,25 @@ $dbParams = @{
  Credential = $SqlCredential
 }
 
-$assignedCallerBaseSql = Get-Content .\sql\assignedCallers.sql -Raw
-$clearAssignmentsBaseSql = Get-Content .\sql\clearAssignments.sql -Raw
-$unnasignedAppointmentsBaseSql = Get-Content .\sql\unnassignedAppointments.sql -Raw
-$updateAppointmentBaseSql = Get-Content .\sql\updateAppointmentAssignment.sql -Raw
-$selectTestingDatesBaseSql = Get-Content .\sql\selectTestingDates.sql -Raw
-$allAppointmentsBaseSql = Get-Content .\sql\allAppointmentsForDate.sql -Raw
-$allAssignmentsForDateBaseSql = Get-Content .\sql\allAssignedAppointmentsForDate.sql -Raw
+$assignedCallerSql = (Get-Content .\sql\assignedCallers.sql -Raw) -f $AssignmentsTable
+$clearAssignmentsSql = (Get-Content .\sql\clearAssignments.sql -Raw) -f $AppointmentsTable
+$unnasignedAppointmentsSql = (Get-Content .\sql\unnassignedAppointments.sql -Raw) -f $AppointmentsTable
+$updateAppointmentSql = (Get-Content .\sql\updateAppointmentAssignment.sql -Raw) -f $AppointmentsTable
+$selectTestingDatesSql = (Get-Content .\sql\selectTestingDates.sql -Raw) -f $AppointmentsTable
+$allAppointmentsSql = (Get-Content .\sql\allAppointmentsForDate.sql -Raw ) -f $AppointmentsTable
+$allAssignmentsForDateSql = (Get-Content .\sql\allAssignedAppointmentsForDate.sql -Raw) -f $AppointmentsTable
 
 $RunUntil = '2:30pm'
 Write-Host "Runs until $RunUntil"
 do {
- Get-TestingDates $dbParams $selectTestingDatesBaseSql $AppointmentsTable |
+ Get-TestingDates $dbParams $selectTestingDatesSql |
   New-CallsObject |
-   Get-AssignedCallers $dbParams $assignedCallerBaseSql $AssignmentsTable |
-    Get-AllAppointmentsForDate $dbParams $allAppointmentsBaseSql $AppointmentsTable |
+   Get-AssignedCallers $dbParams $assignedCallerSql |
+    Get-AllAppointmentsForDate $dbParams $allAppointmentsSql |
      Get-AppointmentCallers |
       Compare-CallersForClear |
-       Clear-Callers $dbParams $clearAssignmentsBaseSql $AppointmentsTable |
-        Set-AllCallAssignments $dbParams $allAssignmentsForDateBaseSql $unnasignedAppointmentsBaseSql $updateAppointmentBaseSql $AppointmentsTable
+       Clear-Callers $dbParams $clearAssignmentsSql |
+        Set-AllCallAssignments $dbParams $allAssignmentsForDateSql $unnasignedAppointmentsSql $updateAppointmentSql
  if (!$WhatIf -and ((Get-Date) -lt (Get-Date $RunUntil))) {
   Write-Host ('Next Run at {0}' -f ((Get-Date).AddSeconds(600)))
   Start-Sleep 600
