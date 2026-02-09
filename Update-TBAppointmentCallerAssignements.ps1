@@ -26,7 +26,7 @@ param (
 
 function Clear-Callers ($dBparams, $sql) {
  process {
-  Write-Verbose ($_ | out-string)
+  Write-Verbose ($_ | Out-String)
   if (!$_.clearCallers) { return $_ }
   # Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_.testDate)
   Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, ($_.testDate -split ' ')[0]) -F DarkCyan
@@ -40,9 +40,9 @@ function Clear-Callers ($dBparams, $sql) {
 
 function Compare-CallersForClear {
  process {
-  Write-Verbose ($_ | out-string)
+  Write-Verbose ($_ | Out-String)
   if ($null -eq $_.appointmentCallers) { return $_ }
-  Write-Verbose ("`n", "Assigned:", $_.assignedCallers, "`n", "Appointments:", $_.appointmentCallers | Out-String)
+  Write-Verbose ("`n", 'Assigned:', $_.assignedCallers, "`n", 'Appointments:', $_.appointmentCallers | Out-String)
   $changes = Compare-Object -ReferenceObject $_.assignedCallers -DifferenceObject $_.appointmentCallers
   $_.clearCallers = if ($changes) { $true } else { $false }
   $_
@@ -100,7 +100,7 @@ function Set-AllCallAssignments ($dBparams, $assignedSql, $unassignedSql, $updat
   function getLowestCaller ($appointments) {
    process {
     Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
-    Write-Verbose ($appointments.caller | Group-Object | Select-Object name, count | Sort-Object count | out-string)
+    Write-Verbose ($appointments.caller | Group-Object | Select-Object name, count | Sort-Object count | Out-String)
     $appointments.caller | Group-Object | Select-Object name, count | Sort-Object count | Select-Object -First 1
    }
   }
@@ -195,7 +195,7 @@ do {
        Clear-Callers $dbParams $clearAssignmentsSql |
         Set-AllCallAssignments $dbParams $allAssignmentsForDateSql $unnasignedAppointmentsSql $updateAppointmentSql
  if (!$WhatIf -and ((Get-Date) -lt (Get-Date $RunUntil))) {
-  Write-Host ('Next Run at {0}' -f ((Get-Date).AddSeconds(600)))
+  Write-Verbose ('Next Run at {0}' -f ((Get-Date).AddSeconds(600)))
   Start-Sleep 600
  }
 } until ($WhatIf -or ((Get-Date) -ge (Get-Date $RunUntil)))
