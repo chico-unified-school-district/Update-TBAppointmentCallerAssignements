@@ -183,7 +183,7 @@ $selectTestingDatesSql = (Get-Content .\sql\selectTestingDates.sql -Raw) -f $App
 $allAppointmentsSql = (Get-Content .\sql\allAppointmentsForDate.sql -Raw ) -f $AppointmentsTable
 $allAssignmentsForDateSql = (Get-Content .\sql\allAssignedAppointmentsForDate.sql -Raw) -f $AppointmentsTable
 
-$stopTime = if ((Get-Date).DayOfWeek -eq 'Wednesday') { $RunUntil } else { '6:00PM' }
+$stopTime = if ((Get-Date).DayOfWeek -eq 'Wednesday') { $RunUntil } else { '5:00PM' }
 Write-Host "Runs until $stopTime"
 do {
  Get-TestingDates $dbParams $selectTestingDatesSql |
