@@ -183,8 +183,8 @@ $selectTestingDatesSql = (Get-Content .\sql\selectTestingDates.sql -Raw) -f $App
 $allAppointmentsSql = (Get-Content .\sql\allAppointmentsForDate.sql -Raw ) -f $AppointmentsTable
 $allAssignmentsForDateSql = (Get-Content .\sql\allAssignedAppointmentsForDate.sql -Raw) -f $AppointmentsTable
 
-$RunUntil = '2:30pm'
-Write-Host "Runs until $RunUntil"
+$stopTime = if ((Get-Date).DayOfWeek -eq 'Wednesday') { $RunUntil } else { '6:00PM' }
+Write-Host "Runs until $stopTime"
 do {
  Get-TestingDates $dbParams $selectTestingDatesSql |
   New-CallsObject |
@@ -194,11 +194,10 @@ do {
       Compare-CallersForClear |
        Clear-Callers $dbParams $clearAssignmentsSql |
         Set-AllCallAssignments $dbParams $allAssignmentsForDateSql $unnasignedAppointmentsSql $updateAppointmentSql
- if (!$WhatIf -and ((Get-Date) -lt (Get-Date $RunUntil))) {
-  Write-Verbose ('Next Run at {0}' -f ((Get-Date).AddSeconds(600)))
-  Start-Sleep 600
- }
-} until ($WhatIf -or ((Get-Date) -ge (Get-Date $RunUntil)))
+ if ($WhatIf) { break }
+ Write-Verbose ('Next Run at {0}' -f ((Get-Date).AddSeconds(600)))
+ Start-Sleep 600
+} until ($WhatIf -or ((Get-Date) -ge (Get-Date $stopTime)))
 
 Show-BlockInfo End
 if ($WhatIf) { Show-TestRun }
