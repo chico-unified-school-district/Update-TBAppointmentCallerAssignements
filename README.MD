@@ -29,9 +29,9 @@ This loops on a 5-minute interval (via `Start-Sleep 300`) until the configured s
 | `SqlServer`         | Yes      | SQL Server/instance name.                                                                                                                                               |
 | `SqlDatabase`       | Yes      | Database name.                                                                                                                                                          |
 | `SqlCredential`     | Yes      | `PSCredential` used to connect to the database.                                                                                                                         |
-| `AppointmentsTable` | No       | Name of the appointments table (used in queries under [sql](sql)).                                                                                                      |
-| `CallersTable`      | No       | Name of the table containing per-date caller assignments.                                                                                                               |
-| `RunUntil`          | No       | Time of day (e.g. `2:00PM`) the polling loop should run until.                                                                                                          |
+| `AppointmentsTable` | Yes      | Name of the appointments table (used in queries under [sql](sql)).                                                                                                      |
+| `CallersTable`      | Yes      | Name of the table containing per-date caller assignments.                                                                                                               |
+| `RunUntil`          | Yes      | Time of day (e.g. `2:00PM`) the polling loop should run until.                                                                                                          |
 | `Wait`              | No       | Switch. Pauses for confirmation (`Read-Host`) before clearing assignments, updating an assignment, and after each item is processed. Useful for step-by-step debugging. |
 | `WhatIf` / `-wi`    | No       | Switch. Runs a single pass without making any database changes.                                                                                                         |
 

@@ -11,15 +11,12 @@
 [cmdletbinding()]
 param (
  # Laserfiche DB Server
- [Parameter(Mandatory = $true)]
- [string]$SqlServer,
- [Parameter(Mandatory = $true)]
- [string]$SqlDatabase,
- [Parameter(Mandatory = $true)]
- [System.Management.Automation.PSCredential]$SqlCredential,
- [string]$AppointmentsTable,
- [string]$CallersTable,
- [string]$RunUntil,
+ [Parameter(Mandatory = $true)][string]$SqlServer,
+ [Parameter(Mandatory = $true)][string]$SqlDatabase,
+ [Parameter(Mandatory = $true)][PSCredential]$SqlCredential,
+ [Parameter(Mandatory = $true)][string]$AppointmentsTable,
+ [Parameter(Mandatory = $true)][string]$CallersTable,
+ [Parameter(Mandatory = $true)][string]$RunUntil,
  [switch]$Wait,
  [Alias('wi')][switch]$WhatIf
 )
