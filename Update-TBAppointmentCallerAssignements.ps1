@@ -175,7 +175,7 @@ $sqlInstance = Connect-DbaInstance @dbParams
 $appointmentsSql = (Get-Content .\sql\select-upcoming-appointments.sql -Raw) -f $AppointmentsTable
 $callerSql = (Get-Content .\sql\select-upcoming-callers.sql -Raw) -f $CallersTable
 $clearAssignmentsSql = (Get-Content .\sql\clear-assignments.sql -Raw) -f $AppointmentsTable
-$unassignedApptsSql = (Get-Content .\sql\select-unnassigned.sql -Raw) -f $AppointmentsTable
+$unassignedApptsSql = (Get-Content .\sql\select-unassigned.sql -Raw) -f $AppointmentsTable
 $updateAssignmentSql = (Get-Content .\sql\update-assignment.sql -Raw) -f $AppointmentsTable
 
 $stopTime = if ($WhatIf) { Get-Date -f 'hh:mmtt' } elseif ((Get-Date).DayOfWeek -eq 'Wednesday') { $RunUntil } else { '5:00PM' }
