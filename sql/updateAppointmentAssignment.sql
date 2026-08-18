@@ -1,1 +1,0 @@
-UPDATE {0} SET nurseName = @nurse WHERE id = @id;
